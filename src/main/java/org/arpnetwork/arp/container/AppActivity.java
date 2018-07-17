@@ -7,64 +7,64 @@ import android.os.Bundle;
 
 public class AppActivity extends Activity {
     public static final String EXTRA_PACKAGE_NAME = "PACKAGE_NAME";
+    public static final String EXTRA_CLASS_NAME = "CLASS_NAME";
 
     private App mApp;
+    private Activity mTarget;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         String packageName = getIntent().getStringExtra(EXTRA_PACKAGE_NAME);
+        String className = getIntent().getStringExtra(EXTRA_CLASS_NAME);
         App app = AppManager.get(packageName);
-        app.bind(this);
+        mTarget = app.createActivity(className, this);
 
         mApp = app;
-        mApp.handleCall("onCreate", savedInstanceState);
+        handleCall("onCreate", savedInstanceState);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
 
-        mApp.handleCall("onStart");
+        handleCall("onStart");
     }
 
     @Override
     protected void onRestart() {
         super.onRestart();
 
-        mApp.handleCall("onRestart");
+        handleCall("onRestart");
     }
 
     @Override
     protected void onResume() {
         super.onResume();
 
-        mApp.handleCall("onResume");
+        handleCall("onResume");
     }
 
     @Override
     protected void onPause() {
         super.onPause();
 
-        mApp.handleCall("onPause");
+        handleCall("onPause");
     }
 
     @Override
     protected void onStop() {
         super.onStop();
 
-        mApp.handleCall("onStop");
+        handleCall("onStop");
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
 
-        mApp.handleCall("onDestroy");
-        mApp.unload();
-        mApp = null;
-        System.gc();
+        handleCall("onDestroy");
     }
 
     @Override
@@ -85,5 +85,13 @@ public class AppActivity extends Activity {
     @Override
     public Resources.Theme getTheme() {
         return mApp != null ? mApp.getTheme() : super.getTheme();
+    }
+
+    private void handleCall(String name) {
+        mApp.handleCall(mTarget, name);
+    }
+
+    private void handleCall(String name, Bundle savedInstanceState) {
+        mApp.handleCall(mTarget, name, savedInstanceState);
     }
 }

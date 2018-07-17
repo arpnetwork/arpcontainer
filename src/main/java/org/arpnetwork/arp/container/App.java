@@ -2,6 +2,7 @@ package org.arpnetwork.arp.container;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.Instrumentation;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -35,7 +36,6 @@ public class App {
     private Class<Activity> mMainActivityClass;
     private DexClassLoader mClassLoader;
 
-    private Activity mActivity;
     private AssetManager mAM;
     private Resources mResources;
     private Resources.Theme mTheme;
@@ -63,31 +63,35 @@ public class App {
         context.startActivity(intent);
     }
 
-    public boolean bind(Activity host) {
+    public Activity createActivity(String className, Activity host) {
         host.setTitle(mResources.getString(mPackageInfo.applicationInfo.labelRes));
         try {
-            mActivity = mMainActivityClass.newInstance();
-            hook(host);
-            MethodUtils.invokeMethod(mActivity, true, "attachBaseContext", host);
+            Class clazz = mMainActivityClass;
+            if (className != null) {
+                clazz = mClassLoader.loadClass(className);
+            }
+            Activity activity = (Activity) clazz.newInstance();
+            hook(activity, host);
+            MethodUtils.invokeMethod(activity, true, "attachBaseContext", host);
+            return activity;
         } catch (ReflectiveOperationException e) {
             Log.w(TAG, "bind failed. reason: " + e.getMessage());
-            return false;
         }
 
-        return true;
+        return null;
     }
 
-    public void handleCall(String name) {
+    public void handleCall(Activity activity, String name) {
         try {
-            MethodUtils.invokeMethod(mActivity, true, name);
+            MethodUtils.invokeMethod(activity, true, name);
         } catch (ReflectiveOperationException e) {
             Log.w(TAG, name + " failed. reason: " + e.getMessage());
         }
     }
 
-    public void handleCall(String name, Bundle savedInstanceState) {
+    public void handleCall(Activity activity, String name, Bundle savedInstanceState) {
         try {
-            MethodUtils.invokeMethod(mActivity, true, name, new Object[]{savedInstanceState}, new Class[]{Bundle.class});
+            MethodUtils.invokeMethod(activity, true, name, new Object[]{savedInstanceState}, new Class[]{Bundle.class});
         } catch (ReflectiveOperationException e) {
             Log.w(TAG, name + " failed. reason: " + e.getMessage());
         }
@@ -161,17 +165,23 @@ public class App {
         return mMainActivityClass != null;
     }
 
-    private void hook(Activity host) throws IllegalAccessException {
-        hook(host, "mActivityInfo");
-        hook(host, "mApplication");
-        hook(host, "mFragments");
-        hook(host, "mTitle");
-        hook(host, "mWindow");
+    private void hook(Activity activity, Activity host) throws IllegalAccessException {
+        hook(activity, host, "mActivityInfo");
+        hook(activity, host, "mApplication");
+        hook(activity, host, "mFragments");
+        hook(activity, host, "mTitle");
+        hook(activity, host, "mWindow");
+        hook(activity, host, "mMainThread");
+
+        // mInstrumentation
+        Instrumentation instrumentation = (Instrumentation) FieldUtils.readField(host, "mInstrumentation", true);
+        instrumentation = new AppInstrumentation(instrumentation, mPackageInfo.packageName);
+        FieldUtils.writeField(activity, "mInstrumentation", instrumentation, true);
     }
 
-    private void hook(Activity host, String fieldName) throws IllegalAccessException {
+    private void hook(Activity activity, Activity host, String fieldName) throws IllegalAccessException {
         Object value = FieldUtils.readField(host, fieldName, true);
-        FieldUtils.writeField(mActivity, fieldName, value, true);
+        FieldUtils.writeField(activity, fieldName, value, true);
     }
 
     private ActivityInfo getMainActivity() {
