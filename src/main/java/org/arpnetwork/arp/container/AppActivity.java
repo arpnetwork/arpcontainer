@@ -36,9 +36,12 @@ public class AppActivity extends Activity {
         String className = getIntent().getStringExtra(EXTRA_CLASS_NAME);
         App app = AppManager.get(packageName);
         mTarget = app.createActivity(className, this);
-
-        mApp = app;
-        handleCall("onCreate", savedInstanceState);
+        if (mTarget != null) {
+            mApp = app;
+            handleCall("onCreate", savedInstanceState);
+        } else {
+            finish();
+        }
     }
 
     @Override
@@ -104,10 +107,14 @@ public class AppActivity extends Activity {
     }
 
     private void handleCall(String name) {
-        mApp.handleCall(mTarget, name);
+        if (mApp != null) {
+            mApp.handleCall(mTarget, name);
+        }
     }
 
     private void handleCall(String name, Bundle savedInstanceState) {
-        mApp.handleCall(mTarget, name, savedInstanceState);
+        if (mApp != null) {
+            mApp.handleCall(mTarget, name, savedInstanceState);
+        }
     }
 }
