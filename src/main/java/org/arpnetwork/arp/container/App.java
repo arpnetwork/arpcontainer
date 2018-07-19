@@ -58,6 +58,9 @@ public class App {
     private Resources mResources;
     private Resources.Theme mTheme;
 
+    private LoadTask mLoadTask;
+    private boolean mLoaded;
+
     public interface OnAppLoadedListener {
         void onAppLoaded(App app, boolean loaded);
     }
@@ -68,11 +71,28 @@ public class App {
     }
 
     public void load(OnAppLoadedListener listener) {
-        new LoadTask(this, listener).execute();
+        if (mLoaded || mLoadTask != null) {
+            throw new IllegalStateException();
+        }
+
+        mLoadTask = new LoadTask(this, listener);
+        mLoadTask.execute();
     }
 
     public void unload() {
-        AppManager.remove(this);
+        if (mLoaded) {
+            AppManager.remove(this);
+            mLoaded = false;
+        }
+    }
+
+    public void cancel() {
+        if (mLoadTask != null) {
+            mLoadTask.cancel(true);
+            mLoadTask = null;
+        } else if (mLoaded) {
+            unload();
+        }
     }
 
     public void start(Context context) {
@@ -134,8 +154,18 @@ public class App {
         return mClassLoader;
     }
 
+    public boolean isLoading() {
+        return mLoadTask != null;
+    }
+
+    public boolean isLoaded() {
+        return mLoaded;
+    }
+
     private void onAppLoaded() {
+        mLoadTask = null;
         AppManager.put(this);
+        mLoaded = true;
     }
 
     private boolean load() {
@@ -291,15 +321,17 @@ public class App {
 
         @Override
         protected void onPostExecute(Boolean aBoolean) {
-            App app = mApp.get();
+            if (!isCancelled()) {
+                App app = mApp.get();
 
-            if (aBoolean && app != null) {
-                app.onAppLoaded();
-            }
+                if (aBoolean && app != null) {
+                    app.onAppLoaded();
+                }
 
-            OnAppLoadedListener listener = mListener.get();
-            if (listener != null) {
-                listener.onAppLoaded(app, aBoolean);
+                OnAppLoadedListener listener = mListener.get();
+                if (listener != null) {
+                    listener.onAppLoaded(app, aBoolean);
+                }
             }
         }
     }
