@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.ComponentInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
@@ -64,7 +66,6 @@ public class App {
     }
 
     public Activity createActivity(String className, Activity host) {
-        host.setTitle(mResources.getString(mPackageInfo.applicationInfo.labelRes));
         try {
             Class clazz = mMainActivityClass;
             if (className != null) {
@@ -169,9 +170,13 @@ public class App {
         hook(activity, host, "mActivityInfo");
         hook(activity, host, "mApplication");
         hook(activity, host, "mFragments");
-        hook(activity, host, "mTitle");
         hook(activity, host, "mWindow");
         hook(activity, host, "mMainThread");
+
+        // mTitle
+        ActivityInfo ai = getActivityInfo(activity.getClass().getName());
+        host.setTitle(loadLabel(ai));
+        hook(activity, host, "mTitle");
 
         // mInstrumentation
         Instrumentation instrumentation = (Instrumentation) FieldUtils.readField(host, "mInstrumentation", true);
@@ -207,6 +212,39 @@ public class App {
         }
 
         return null;
+    }
+
+    private ActivityInfo getActivityInfo(String className) {
+        for (ActivityInfo info : mPackageInfo.activities) {
+            if (info.name.equals(className)) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    private CharSequence loadLabel(ComponentInfo info) {
+        if (info.nonLocalizedLabel != null) {
+            return info.nonLocalizedLabel;
+        }
+        ApplicationInfo ai = info.applicationInfo;
+        CharSequence label;
+        if (info.labelRes != 0) {
+            label = mResources.getText(info.labelRes);
+            if (label != null) {
+                return label;
+            }
+        }
+        if (ai.nonLocalizedLabel != null) {
+            return ai.nonLocalizedLabel;
+        }
+        if (ai.labelRes != 0) {
+            label = mResources.getText(ai.labelRes);
+            if (label != null) {
+                return label;
+            }
+        }
+        return info.name;
     }
 
     private String getDir(String name) {
