@@ -187,6 +187,9 @@ public class App {
         hook(activity, host, "mFragments");
         hook(activity, host, "mWindow");
         hook(activity, host, "mMainThread");
+        hook(activity, host, "mIntent");
+        // For Activity.finish() works
+        hook(activity, host, "mToken");
 
         // mActivityInfo
         ActivityInfo ai = getActivityInfo(activity.getClass().getName());
@@ -200,6 +203,8 @@ public class App {
         Instrumentation instrumentation = (Instrumentation) FieldUtils.readField(host, "mInstrumentation", true);
         instrumentation = new AppInstrumentation(instrumentation, mPackageInfo.packageName);
         FieldUtils.writeField(activity, "mInstrumentation", instrumentation, true);
+
+        activity.getWindow().setCallback(activity);
     }
 
     private void hook(Activity activity, Activity host, String fieldName) throws IllegalAccessException {
