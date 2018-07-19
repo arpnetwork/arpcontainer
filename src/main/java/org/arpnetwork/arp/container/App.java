@@ -92,7 +92,7 @@ public class App {
             MethodUtils.invokeMethod(activity, true, "attachBaseContext", host);
             return activity;
         } catch (ReflectiveOperationException e) {
-            Log.w(TAG, "bind failed. reason: " + e.getMessage());
+            Log.e(TAG, "bind failed. reason: " + e.getMessage());
         }
 
         return null;
@@ -102,7 +102,7 @@ public class App {
         try {
             MethodUtils.invokeMethod(activity, true, name);
         } catch (ReflectiveOperationException e) {
-            Log.w(TAG, name + " failed. reason: " + e.getMessage());
+            Log.e(TAG, name + " failed. reason: " + e.getMessage());
         }
     }
 
@@ -110,7 +110,7 @@ public class App {
         try {
             MethodUtils.invokeMethod(activity, true, name, new Object[]{savedInstanceState}, new Class[]{Bundle.class});
         } catch (ReflectiveOperationException e) {
-            Log.w(TAG, name + " failed. reason: " + e.getMessage());
+            Log.e(TAG, name + " failed. reason: " + e.getMessage());
         }
     }
 
