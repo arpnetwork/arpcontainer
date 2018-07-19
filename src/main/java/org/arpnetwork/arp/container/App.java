@@ -183,14 +183,16 @@ public class App {
     }
 
     private void hook(Activity activity, Activity host) throws IllegalAccessException {
-        hook(activity, host, "mActivityInfo");
         hook(activity, host, "mApplication");
         hook(activity, host, "mFragments");
         hook(activity, host, "mWindow");
         hook(activity, host, "mMainThread");
 
-        // mTitle
+        // mActivityInfo
         ActivityInfo ai = getActivityInfo(activity.getClass().getName());
+        FieldUtils.writeField(activity, "mActivityInfo", ai, true);
+
+        // mTitle
         host.setTitle(loadLabel(ai));
         hook(activity, host, "mTitle");
 
