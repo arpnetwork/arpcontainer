@@ -17,8 +17,6 @@
 package org.arpnetwork.arp.container;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
-import android.app.Instrumentation;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -30,7 +28,6 @@ import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.os.AsyncTask;
-import android.os.Bundle;
 import android.util.Log;
 
 import org.apache.commons.lang3.reflect.ConstructorUtils;
@@ -41,22 +38,18 @@ import java.io.File;
 import java.lang.ref.WeakReference;
 import java.util.List;
 
-import dalvik.system.DexClassLoader;
-
 public class App {
     private static final String TAG = "App";
 
     private Context mContext;
     private String mApkPath;
+    private File mOptimizedDirectory;
 
     private PackageInfo mPackageInfo;
     private ActivityInfo mMainActivityInfo;
-    private Class<Activity> mMainActivityClass;
-    private DexClassLoader mClassLoader;
 
     private AssetManager mAM;
     private Resources mResources;
-    private Resources.Theme mTheme;
 
     private LoadTask mLoadTask;
     private boolean mLoaded;
@@ -96,42 +89,20 @@ public class App {
     }
 
     public void start(Context context) {
-        Intent intent = new Intent(context, AppActivity.class);
-        intent.putExtra(AppActivity.EXTRA_PACKAGE_NAME, getPackageName());
-        context.startActivity(intent);
-    }
-
-    public Activity createActivity(String className, Activity host) {
         try {
-            Class clazz = mMainActivityClass;
-            if (className != null) {
-                clazz = mClassLoader.loadClass(className);
-            }
-            Activity activity = (Activity) clazz.newInstance();
-            hook(activity, host);
-            MethodUtils.invokeMethod(activity, true, "attachBaseContext", host);
-            return activity;
-        } catch (ReflectiveOperationException e) {
-            Log.e(TAG, "bind failed. reason: " + e.getMessage());
-        }
-
-        return null;
-    }
-
-    public void handleCall(Activity activity, String name) {
-        try {
-            MethodUtils.invokeMethod(activity, true, name);
-        } catch (ReflectiveOperationException e) {
-            Log.e(TAG, name + " failed. reason: " + e.getMessage());
+            Class<?> clazz = Class.forName(mMainActivityInfo.name);
+            Intent intent = new Intent(context, clazz);
+            context.startActivity(intent);
+        } catch (ClassNotFoundException e) {
         }
     }
 
-    public void handleCall(Activity activity, String name, Bundle savedInstanceState) {
-        try {
-            MethodUtils.invokeMethod(activity, true, name, new Object[]{savedInstanceState}, new Class[]{Bundle.class});
-        } catch (ReflectiveOperationException e) {
-            Log.e(TAG, name + " failed. reason: " + e.getMessage());
-        }
+    public String getApkPath() {
+        return mApkPath;
+    }
+
+    public File getOptimizedDirectory() {
+        return mOptimizedDirectory;
     }
 
     public String getPackageName() {
@@ -146,14 +117,6 @@ public class App {
         return mResources;
     }
 
-    public Resources.Theme getTheme() {
-        return mTheme;
-    }
-
-    public ClassLoader getClassLoader() {
-        return mClassLoader;
-    }
-
     public boolean isLoading() {
         return mLoadTask != null;
     }
@@ -162,14 +125,49 @@ public class App {
         return mLoaded;
     }
 
+    public ActivityInfo getActivityInfo(String className) {
+        for (ActivityInfo info : mPackageInfo.activities) {
+            if (info.name.equals(className)) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    public CharSequence loadLabel(ComponentInfo info) {
+        if (info.nonLocalizedLabel != null) {
+            return info.nonLocalizedLabel;
+        }
+        ApplicationInfo ai = info.applicationInfo;
+        CharSequence label;
+        if (info.labelRes != 0) {
+            label = mResources.getText(info.labelRes);
+            if (label != null) {
+                return label;
+            }
+        }
+        if (ai.nonLocalizedLabel != null) {
+            return ai.nonLocalizedLabel;
+        }
+        if (ai.labelRes != 0) {
+            label = mResources.getText(ai.labelRes);
+            if (label != null) {
+                return label;
+            }
+        }
+        return info.name;
+    }
+
     private void onAppLoaded() {
         mLoadTask = null;
         AppManager.put(this);
         mLoaded = true;
+
+        mOptimizedDirectory = mContext.getDir(getPackageName(), Context.MODE_PRIVATE);
     }
 
     private boolean load() {
-        return loadPackageInfo() && loadDex() && loadResources();
+        return loadPackageInfo() && loadResources() && Hook.init(mContext, this);
     }
 
     private boolean loadPackageInfo() {
@@ -185,61 +183,14 @@ public class App {
             mAM = AssetManager.class.newInstance();
             MethodUtils.invokeMethod(mAM, "addAssetPath", mApkPath);
             Resources res = mContext.getResources();
-            Resources.Theme theme = mContext.getTheme();
             mResources = new Resources(mAM, res.getDisplayMetrics(), res.getConfiguration());
-            mTheme = mResources.newTheme();
-            mTheme.setTo(theme);
         } catch (ReflectiveOperationException e) {
             Log.e(TAG, "load resources failed. reason: " + e.getMessage());
+
             return false;
         }
 
         return true;
-    }
-
-    private boolean loadDex() {
-        mClassLoader = new DexClassLoader(
-                mApkPath,
-                getDir("app"),
-                getDir("app_lib"),
-                mContext.getClassLoader());
-        try {
-            mMainActivityClass = (Class<Activity>) mClassLoader.loadClass(mMainActivityInfo.name);
-        } catch (ClassNotFoundException e) {
-            Log.e(TAG, "load dex failed. reason: " + e.getMessage());
-        }
-
-        return mMainActivityClass != null;
-    }
-
-    private void hook(Activity activity, Activity host) throws IllegalAccessException {
-        hook(activity, host, "mApplication");
-        hook(activity, host, "mFragments");
-        hook(activity, host, "mWindow");
-        hook(activity, host, "mMainThread");
-        hook(activity, host, "mIntent");
-        // For Activity.finish() works
-        hook(activity, host, "mToken");
-
-        // mActivityInfo
-        ActivityInfo ai = getActivityInfo(activity.getClass().getName());
-        FieldUtils.writeField(activity, "mActivityInfo", ai, true);
-
-        // mTitle
-        host.setTitle(loadLabel(ai));
-        hook(activity, host, "mTitle");
-
-        // mInstrumentation
-        Instrumentation instrumentation = (Instrumentation) FieldUtils.readField(host, "mInstrumentation", true);
-        instrumentation = new AppInstrumentation(instrumentation, mPackageInfo.packageName);
-        FieldUtils.writeField(activity, "mInstrumentation", instrumentation, true);
-
-        activity.getWindow().setCallback(activity);
-    }
-
-    private void hook(Activity activity, Activity host, String fieldName) throws IllegalAccessException {
-        Object value = FieldUtils.readField(host, fieldName, true);
-        FieldUtils.writeField(activity, fieldName, value, true);
     }
 
     private ActivityInfo getMainActivity() {
@@ -267,50 +218,13 @@ public class App {
         return null;
     }
 
-    private ActivityInfo getActivityInfo(String className) {
-        for (ActivityInfo info : mPackageInfo.activities) {
-            if (info.name.equals(className)) {
-                return info;
-            }
-        }
-        return null;
-    }
-
-    private CharSequence loadLabel(ComponentInfo info) {
-        if (info.nonLocalizedLabel != null) {
-            return info.nonLocalizedLabel;
-        }
-        ApplicationInfo ai = info.applicationInfo;
-        CharSequence label;
-        if (info.labelRes != 0) {
-            label = mResources.getText(info.labelRes);
-            if (label != null) {
-                return label;
-            }
-        }
-        if (ai.nonLocalizedLabel != null) {
-            return ai.nonLocalizedLabel;
-        }
-        if (ai.labelRes != 0) {
-            label = mResources.getText(ai.labelRes);
-            if (label != null) {
-                return label;
-            }
-        }
-        return info.name;
-    }
-
-    private String getDir(String name) {
-        return mContext.getDir(name, Context.MODE_PRIVATE).getAbsolutePath();
-    }
-
     private static class LoadTask extends AsyncTask<Void, Void, Boolean> {
         private WeakReference<App> mApp;
-        private WeakReference<OnAppLoadedListener> mListener;
+        private OnAppLoadedListener mListener;
 
         public LoadTask(App app, OnAppLoadedListener listener) {
             mApp = new WeakReference<>(app);
-            mListener = new WeakReference<>(listener);
+            mListener = listener;
         }
 
         @Override
@@ -323,14 +237,12 @@ public class App {
         protected void onPostExecute(Boolean aBoolean) {
             if (!isCancelled()) {
                 App app = mApp.get();
+                if (app != null) {
+                    if (aBoolean) {
+                        app.onAppLoaded();
+                    }
 
-                if (aBoolean && app != null) {
-                    app.onAppLoaded();
-                }
-
-                OnAppLoadedListener listener = mListener.get();
-                if (listener != null) {
-                    listener.onAppLoaded(app, aBoolean);
+                    mListener.onAppLoaded(app, aBoolean);
                 }
             }
         }
